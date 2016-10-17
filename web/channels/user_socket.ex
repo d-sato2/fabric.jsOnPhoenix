@@ -2,7 +2,7 @@ defmodule FlaskOnPhoenix.UserSocket do
   use Phoenix.Socket
 
   ## Channels
-  # channel "room:*", FlaskOnPhoenix.RoomChannel
+  channel "rooms:*", FlaskOnPhoenix.RoomChannel
 
   ## Transports
   transport :websocket, Phoenix.Transports.WebSocket
