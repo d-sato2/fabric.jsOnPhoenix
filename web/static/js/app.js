@@ -5,63 +5,179 @@ socket.connect();
 var channel = socket.channel("rooms:lobby", {});
 channel.join();
 
+
 window.onload = function(){
 
-  var canvas = this.__canvas = new fabric.Canvas('test_canvas');
-  fabric.Object.prototype.transparentCorners = false;
+    var createCanvas = function(count) {
+      var canvasWidth = window.innerWidth/2 -30,
+          $canvas = $('<canvas id="demoCanvas' + count + '" class="main-canvas" width="' + canvasWidth + '" height="600"></canvas>').appendTo('main'),
+          canvas = new fabric.Canvas($canvas[0]),
+          defaultOptions = {
+            left: 100,
+            top: 100,
+            fill: '#f7e6ce',
+            width: 200,
+            height: 200,
+            shadow: {
+              color: 'rgba(0, 0, 0, 0.3)',
+              blur: 1,
+              offsetX: 1,
+              offsetY: 1
+            }
+          },
+          id_counter = 0;
 
-  // var canvas = new fabric.Canvas('test_canvas');
-  // fabric.Object.prototype.transparentCorners = false;
-  var mouse_start_pos_socket = { x:0 , y:0 };
-  var mouse_start_pos = { x:0 , y:0 };
-  var mouse_end_pos = { x:0 , y:0 };
-  var width = 120;
-  var height = 80;
-  var on_flag = 0;
+      //デフォルト選択スタイル設定
+      $.extend( fabric.Object.prototype, {
+        borderColor: 'rgba(0, 100, 255, 0.3)',
+        cornerColor: 'rgba(0, 100, 255, 0.3)',
+        cornerSize: 8,
+        transparentCorners: false,
+        padding: 5,
+      });
 
+      function animate(e, dir, callback) {
+        if (e.target) {
+          fabric.util.animate({
+            startValue: e.target.get('scaleX'),
+            endValue: e.target.get('scaleX') + (dir ? 0.02 : -0.02),
+            duration: 50,
+            onChange: function(value) {
+              e.target.scale(value);
+              canvas.renderAll();
+            },
+            onComplete: function() {
+              e.target.setCoords();
+              if(callback) callback(e);
+            }
+          });
+        }
+      }
 
-    canvas.on('mouse:over', function(e) {
-      on_flag = 1;
-      e.target.setFill('red');
-      // e.target.hasControls = true;
-      // canvas.set('selectable', true);
-      canvas.renderAll();
-    });
+      var mouseDowned = { state: false, target: null },
+          selectionCleared = { state: false, target: null };
 
+      canvas.on('object:selected', function(e) {
+        console.log('object:selected');
+        console.log(e);
+      });
 
-    canvas.on('mouse:out', function(e) {
-      on_flag = 0;
-      e.target.setFill('green');
-      // e.target.hasControls = false;
-      // canvas.set('selectable', false);
-      canvas.renderAll();
-    });
+      canvas.on('selection:cleared', function(e) {
+        console.log('selection:cleared');
+        selectionCleared = { state: true, target: e.target };
+        console.log(e);
+      });
 
+      canvas.on('mouse:down', function(e) {
+        console.log('mouse:down');
+        mouseDowned = { state: true, target: e.target };
+        console.log(e)
+      });
 
-  canvas.on('mouse:down', function(e) {
-    if(on_flag == 0){
-     mouse_start_pos_socket = canvas.getPointer(e.e);
-     console.log(mouse_start_pos_socket)
-     channel.push("move", {
-     	x: mouse_start_pos_socket.x,
-     	y: mouse_start_pos_socket.y
-     });
-   }
-  });
+      canvas.on('mouse:move', function(e) {
+        mouseDowned = { state: false, target: null };
+        selectionCleared = { state: false, target: null };
+      });
 
-  channel.on("move", function(dt) {
-     console.log(dt)
-  	mouse_start_pos.x = dt.x;
-  	mouse_start_pos.y = dt.y;
-	canvas.add(new fabric.Rect({
-	 left: mouse_start_pos.x - width / 2,
-	 top: mouse_start_pos.y - height /2,
-	 width: width,
-	 height: height,
-	 fill: 'aqua',
-	 stroke: 'blue',
-	 strokeWidth: 0
-	}));
-	on_flag = 1;
-  });
+      canvas.on('mouse:up', function(e) {
+        console.log('mouse:up');
+        if( mouseDowned.state ) {
+          if( !mouseDowned.target ) {
+            //直前に選択状態が解除された場合は作らない
+            if( selectionCleared.state ) {
+              selectionCleared = { state: false, target: null };
+              return;
+            }
+
+            var mouse_start_pos = canvas.getPointer(e.e);
+               channel.push("sticky:create", {
+                left: mouse_start_pos.x - defaultOptions.width / 2,
+                top: mouse_start_pos.y - defaultOptions.height / 2
+               });
+
+          } else {
+            canvas.trigger('mouse:click', e);
+          }
+        }
+        selectionCleared = { state: false, target: null };
+        console.log(e)
+      });
+
+      canvas.on('mouse:click', function(e) {
+        console.log('mouse:click');
+        console.log(e);
+        animate(e, 1, function(e){ animate(e, 0); });
+      });
+
+      canvas.on('object:modified', function(e) {
+        console.log('object:modified');
+        console.log(e);
+        var objects = [];
+
+        if(typeof e.target.id === 'number') {
+          objects.push(e.target);
+        } else {
+          objects = e.target._objects;
+        }
+
+        objects.forEach( function(target) {
+          console.log('each');
+          // debugger
+          channel.push("sticky:modified", {
+            id: target.id,
+            left: target.left,
+            top: target.top,
+            width: target.width,
+            height: target.height,
+            scaleX: target.scaleX,
+            scaleY: target.scaleY
+          })
+        });
+      });
+
+      channel.on("sticky:create", function(config){
+        //矩形オブジェクトを作る
+        var sticky = new fabric.Rect($.extend(defaultOptions, {
+          id: id_counter,
+          left: config.left,
+          top: config.top
+        }));
+        id_counter++;
+
+        // sticky.on('modified', function(e) {
+        //   console.log('modified');
+          // $(document).trigger('sticky:modified', {
+          //   id: this.id,
+          //   left: this.left,
+          //   top: this.top,
+          //   width: this.width,
+          //   height: this.height,
+          //   scaleX: this.scaleX,
+          //   scaleY: this.scaleY
+          // })
+        // });
+        // canvas 上に矩形を追加する
+        canvas.add(sticky);
+      });
+
+      channel.on("sticky:modified", function(config){
+        console.log('sticky:modified');
+        var sticky = canvas.getObjects().find(function(o){ return o.id === config.id });
+        console.log(canvas);
+        console.log(sticky);
+        console.log(config);
+        sticky.setLeft(config.left);
+        sticky.setTop(config.top);
+        sticky.setWidth(config.width);
+        sticky.setHeight(config.height);
+        sticky.setScaleX(config.scaleX);
+        sticky.setScaleY(config.scaleY);
+        sticky.setCoords();
+        canvas.renderAll();
+      });
+    }
+
+    for(var i=0; i < 2; i++) {
+      createCanvas(i);
+    }
 }

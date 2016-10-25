@@ -8,8 +8,13 @@ defmodule FlaskOnPhoenix.RoomChannel do
     {:error, %{reason: "unauthorized"}}
   end
 
-  def handle_in("move", %{"x" => x, "y" => y}, socket) do
-    broadcast! socket, "move", %{x: x, y: y}
+  def handle_in("sticky:create", %{"left" => x, "top" => y}, socket) do
+    broadcast! socket, "sticky:create", %{left: x, top: y}
+    {:noreply, socket}
+  end
+
+  def handle_in("sticky:modified", %{"id" => a, "left" => b, "top" => c, "width" => d, "height" => e, "scaleX" => f, "scaleY" => g}, socket) do
+    broadcast! socket, "sticky:modified", %{id: a, left: b, top: c, width: d, height: e, scaleX: f, scaleY: g}
     {:noreply, socket}
   end
 end
